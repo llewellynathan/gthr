@@ -1,12 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
 import { format, parseISO } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { Inter } from 'next/font/google'
 import { use } from 'react'
-import 'mapbox-gl/dist/mapbox-gl.css'
 import { RSVPDialog } from '@/components/events/RSVPDialog'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -33,10 +31,6 @@ interface EventData {
   endTime: string
   location: string
   coverImage: string
-  coordinates: {
-    lat: number
-    lng: number
-  } | null
   user_id: string
 }
 
@@ -51,12 +45,6 @@ interface RSVPData {
 const formatName = (firstName: string, lastName: string) => {
   return `${firstName} ${lastName}`
 }
-
-if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
-  throw new Error('NEXT_PUBLIC_MAPBOX_TOKEN is required in environment variables')
-}
-
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
 // Add this helper function
 const getAttendeesList = (attendees: RSVPData[], isCreator: boolean) => {
@@ -80,6 +68,22 @@ const getAttendeesList = (attendees: RSVPData[], isCreator: boolean) => {
     ))
 }
 
+// Add this helper function at the top with other helper functions
+const getMapUrl = (address: string) => {
+  // Check if user is on iOS
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  
+  // Encode the address for use in URL
+  const encodedAddress = encodeURIComponent(address);
+  
+  // Return Apple Maps link for iOS devices, Google Maps for others
+  if (isIOS) {
+    return `maps://maps.apple.com/?q=${encodedAddress}`;
+  } else {
+    return `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+  }
+};
+
 export default function EventDetails({ params }: EventDetailsProps) {
   const { id } = use(params)
   const { user, loading: userLoading } = useUser()
@@ -88,9 +92,6 @@ export default function EventDetails({ params }: EventDetailsProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [eventData, setEventData] = useState<EventData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<mapboxgl.Map | null>(null)
-  const marker = useRef<mapboxgl.Marker | null>(null)
   const [isRSVPDialogOpen, setIsRSVPDialogOpen] = useState(false)
   const [selectedRSVPStatus, setSelectedRSVPStatus] = useState<'going' | 'interested' | 'not_going' | null>(null)
   const [attendees, setAttendees] = useState<RSVPData[]>([])
@@ -146,52 +147,11 @@ export default function EventDetails({ params }: EventDetailsProps) {
           startTime: event.starttime,
           endTime: event.endtime,
           location: event.location,
-          coordinates: event.coordinates ? {
-            lat: event.coordinates.coordinates[1],
-            lng: event.coordinates.coordinates[0]
-          } : null,
           user_id: event.user_id
         }
 
         setEventData(transformedEvent)
         setIsCreator(user?.id === event.user_id)
-
-        // Only initialize map if we have coordinates
-        if (transformedEvent.coordinates && mapContainer.current) {
-          // Wait for container to be ready
-          setTimeout(() => {
-            try {
-              // Check if map already exists
-              if (map.current) {
-                map.current.remove()
-              }
-
-              map.current = new mapboxgl.Map({
-                container: mapContainer.current!,
-                style: 'mapbox://styles/mapbox/streets-v12',
-                center: [transformedEvent.coordinates!.lng, transformedEvent.coordinates!.lat],
-                zoom: 14,
-                interactive: false
-              })
-
-              // Wait for map to load before adding marker
-              map.current.on('load', () => {
-                // Remove any existing marker
-                if (marker.current) {
-                  marker.current.remove()
-                }
-
-                // Add new marker
-                marker.current = new mapboxgl.Marker()
-                  .setLngLat([transformedEvent.coordinates!.lng, transformedEvent.coordinates!.lat])
-                  .addTo(map.current!)
-              })
-
-            } catch (mapError) {
-              console.error('Error initializing map:', mapError)
-            }
-          }, 100) // Small delay to ensure container is ready
-        }
       } catch (error) {
         console.error('Error fetching event:', error)
         setError(error instanceof Error ? error.message : 'Failed to load event')
@@ -202,16 +162,6 @@ export default function EventDetails({ params }: EventDetailsProps) {
 
     if (id && user) {
       fetchEvent()
-    }
-
-    // Cleanup function
-    return () => {
-      if (map.current) {
-        map.current.remove()
-      }
-      if (marker.current) {
-        marker.current.remove()
-      }
     }
   }, [id, user])
 
@@ -340,45 +290,6 @@ export default function EventDetails({ params }: EventDetailsProps) {
     return attendees.filter(rsvp => rsvp.status === 'going').length
   }
 
-  useEffect(() => {
-    // Initialize map when coordinates are available
-    if (eventData?.coordinates && mapContainer.current) {
-      // Initialize map
-      const initializeMap = () => {
-        if (map.current) return; // Return if map is already initialized
-
-        map.current = new mapboxgl.Map({
-          container: mapContainer.current!,
-          style: 'mapbox://styles/mapbox/streets-v12',
-          center: [eventData.coordinates!.lng, eventData.coordinates!.lat],
-          zoom: 13
-        });
-
-        // Add marker
-        marker.current = new mapboxgl.Marker()
-          .setLngLat([eventData.coordinates!.lng, eventData.coordinates!.lat])
-          .addTo(map.current);
-
-        // Add navigation controls
-        map.current.addControl(new mapboxgl.NavigationControl());
-      };
-
-      initializeMap();
-
-      // Cleanup function
-      return () => {
-        if (map.current) {
-          try {
-            map.current.remove();
-          } catch (error) {
-            console.warn('Error removing map:', error);
-          }
-          map.current = null;
-        }
-      };
-    }
-  }, [eventData?.coordinates]); // Only re-run when coordinates change
-
   const handleCancelEvent = async () => {
     if (!eventData) return
     
@@ -411,6 +322,11 @@ export default function EventDetails({ params }: EventDetailsProps) {
       setIsCancelDialogOpen(false)
     }
   }
+
+  // Add this handler function
+  const handleLocationClick = (location: string) => {
+    window.open(getMapUrl(location), '_blank');
+  };
 
   if (userLoading || isLoading) {
     return (
@@ -505,18 +421,13 @@ export default function EventDetails({ params }: EventDetailsProps) {
               )}>
                 Location
               </h2>
-              <p className="text-gray-600 mb-4">
-                {eventData.location}
-              </p>
-              <div 
-                ref={mapContainer} 
-                className="w-full h-[300px] rounded-lg overflow-hidden border border-gray-200"
-                style={{ 
-                  minHeight: '300px',
-                  position: 'relative',
-                  backgroundColor: '#f8f9fa' // Light background while loading
-                }}
-              />
+              <button
+                onClick={() => handleLocationClick(eventData.location)}
+                className="text-gray-600 hover:text-blue-500 transition-colors flex items-center gap-2"
+              >
+                <span className="material-icons text-base">place</span>
+                <span className="underline">{eventData.location}</span>
+              </button>
             </div>
           </div>
 

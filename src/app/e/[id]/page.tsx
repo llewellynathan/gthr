@@ -9,8 +9,6 @@ import { RSVPDialog } from '@/components/events/RSVPDialog'
 import { supabase } from '@/lib/supabase'
 import { useUser } from '@/lib/hooks/useUser'
 import Link from 'next/link'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
 import { useSearchParams } from 'next/navigation'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -60,10 +58,6 @@ interface EventData {
   endTime: string
   location: string
   coverImage: string
-  coordinates: {
-    lat: number
-    lng: number
-  } | null
   user_id: string
 }
 
@@ -111,6 +105,27 @@ const getStoredRSVP = (eventId: string): StoredRSVP | null => {
   return stored ? JSON.parse(stored) : null
 }
 
+const getAnonymousCount = (attendees: RSVPData[]) => {
+  return attendees.filter(rsvp => 
+    rsvp.status === 'going' && rsvp.hide_from_guest_list
+  ).length
+}
+
+const getMapUrl = (address: string) => {
+  // Check if user is on iOS
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  
+  // Encode the address for use in URL
+  const encodedAddress = encodeURIComponent(address);
+  
+  // Return Apple Maps link for iOS devices, Google Maps for others
+  if (isIOS) {
+    return `maps://maps.apple.com/?q=${encodedAddress}`;
+  } else {
+    return `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+  }
+};
+
 export default function PublicEventDetails({ params }: PublicEventDetailsProps) {
   const { id } = use(params)
   const searchParams = useSearchParams()
@@ -124,15 +139,11 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
   const [selectedRSVPStatus, setSelectedRSVPStatus] = useState<'going' | 'interested' | 'not_going' | null>(null)
   const [attendees, setAttendees] = useState<RSVPData[]>([])
   const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<mapboxgl.Map | null>(null)
-  const marker = useRef<mapboxgl.Marker | null>(null)
   const [hasSubmittedRSVP, setHasSubmittedRSVP] = useState(false)
   const [currentUserRSVP, setCurrentUserRSVP] = useState<StoredRSVP | null>(null)
 
   const getGoingCount = () => {
-    return attendees.filter(rsvp => 
-      rsvp.status === 'going' && !rsvp.hide_from_guest_list
-    ).length
+    return attendees.filter(rsvp => rsvp.status === 'going').length
   }
 
   const handleRSVP = async (data: { 
@@ -216,6 +227,9 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
         setIsLoading(true)
         setError(null)
 
+        // Add logging for the ID
+        console.log('Fetching event with ID:', id);
+
         // If there's an invite code, verify it
         if (inviteCode) {
           const { data: invitation, error: inviteError } = await supabase
@@ -236,6 +250,9 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
           .eq('id', id)
           .single()
 
+        // Add logging for the raw event data
+        console.log('Raw event data:', event);
+
         if (eventError) {
           if (eventError.code === 'PGRST116') {
             throw new Error('Event not found')
@@ -247,6 +264,9 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
           throw new Error('Event not found')
         }
 
+        // Add logging for transformed event
+        console.log('Transformed event:', event);
+
         const transformedEvent: EventData = {
           id: event.id,
           title: event.title,
@@ -256,10 +276,6 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
           startTime: event.starttime,
           endTime: event.endtime,
           location: event.location,
-          coordinates: event.coordinates ? {
-            lat: event.coordinates.coordinates[1],
-            lng: event.coordinates.coordinates[0]
-          } : null,
           user_id: event.user_id
         }
 
@@ -328,39 +344,6 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
     }
   }, [id])
 
-  // Add this effect to initialize the map when coordinates are available
-  useEffect(() => {
-    if (!eventData?.coordinates || !mapContainer.current || map.current) return
-
-    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
-    if (!mapboxToken) {
-      console.error('Mapbox access token is missing')
-      return
-    }
-
-    mapboxgl.accessToken = mapboxToken
-
-    try {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [eventData.coordinates.lng, eventData.coordinates.lat],
-        zoom: 15
-      })
-
-      marker.current = new mapboxgl.Marker()
-        .setLngLat([eventData.coordinates.lng, eventData.coordinates.lat])
-        .addTo(map.current)
-    } catch (error) {
-      console.error('Error initializing Mapbox map:', error)
-    }
-
-    return () => {
-      map.current?.remove()
-      map.current = null
-    }
-  }, [eventData?.coordinates])
-
   // Add this effect to check localStorage on mount
   useEffect(() => {
     if (id) {
@@ -370,7 +353,9 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
     }
   }, [id])
 
-  // ... keep the RSVPs loading effect
+  const handleLocationClick = (location: string) => {
+    window.open(getMapUrl(location), '_blank');
+  };
 
   if (isLoading) {
     return (
@@ -468,28 +453,15 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
               </p>
             </div>
 
-            <div>
-              <h2 className={cn(
-                inter.className,
-                "text-2xl font-bold mb-4"
-              )}>
-                Location
-              </h2>
-              <p className="text-gray-600 mb-4">
-                {eventData?.location}
-              </p>
-              
-              {/* Add the map container */}
-              {eventData?.coordinates && (
-                <div 
-                  ref={mapContainer}
-                  className="w-full aspect-[16/9] rounded-lg overflow-hidden border"
-                  style={{ 
-                    position: 'relative',
-                    backgroundColor: '#f8f9fa' // Light background while loading
-                  }}
-                />
-              )}
+            <div className="space-y-4">
+              <h2 className={cn(inter.className, "text-2xl font-bold mb-4")}>Location</h2>
+              <button
+                onClick={() => handleLocationClick(eventData.location)}
+                className="text-gray-600 hover:text-blue-500 transition-colors flex items-center gap-2"
+              >
+                <span className="material-icons text-base">place</span>
+                <span className="underline">{eventData.location}</span>
+              </button>
             </div>
           </div>
 
@@ -575,6 +547,11 @@ export default function PublicEventDetails({ params }: PublicEventDetailsProps) 
 
               {getGoingCount() > 0 && (
                 <div className="space-y-2 mt-4">
+                  {getAnonymousCount(attendees) > 0 && (
+                    <p className="text-gray-600">
+                      {getAnonymousCount(attendees)} anonymous {getAnonymousCount(attendees) === 1 ? 'guest' : 'guests'}
+                    </p>
+                  )}
                   {attendees
                     .filter(rsvp => rsvp.status === 'going' && !rsvp.hide_from_guest_list)
                     .map((rsvp, index) => (

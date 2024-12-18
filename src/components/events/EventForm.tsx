@@ -89,6 +89,7 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
     location: initialData?.location || "",
     coordinates: initialData?.coordinates || null,
   })
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   useEffect(() => {
     const checkSupabase = async () => {
@@ -141,6 +142,7 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
   }, [])
 
   useEffect(() => {
+    // When in edit mode, mark all sections as completed initially
     if (mode === 'edit' && initialData) {
       setCompletedSections(["overview", "cover", "datetime"])
     }
@@ -159,6 +161,12 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
 
   const isCompleted = (section: Section) => completedSections.includes(section)
   const isLocked = (section: Section) => {
+    // In edit mode, publish section is never locked
+    if (mode === 'edit' && section === 'publish') {
+      return false
+    }
+
+    // For create mode, keep the existing logic
     const order: Section[] = ["overview", "cover", "datetime", "publish"]
     const currentIndex = order.indexOf(currentSection)
     const sectionIndex = order.indexOf(section)
@@ -167,155 +175,88 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
 
   const handleSectionComplete = async (section: Section, data: any) => {
     try {
+      // Update form data first
+      setFormData(prev => ({
+        ...prev,
+        ...data
+      }))
+      setHasUnsavedChanges(true)
+      
       if (section === "publish") {
         // Get current user
-        const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+        const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
         if (authError || !currentUser) {
-          throw new Error(authError?.message || 'User not authenticated');
+          throw new Error(authError?.message || 'User not authenticated')
         }
 
         // Prepare event payload
-        const eventPayload: EventPayload = {
+        const eventPayload = {
           title: formData.title,
           description: formData.description,
-          coverimage: formData.coverImage,
           date: formData.date,
           starttime: formData.startTime,
           endtime: formData.endTime,
           location: formData.location,
+          coordinates: formData.coordinates,
+          coverimage: formData.coverImage,
           user_id: currentUser.id,
-          coordinates: formData.coordinates ? {
-            type: 'Point',
-            coordinates: [formData.coordinates.lng, formData.coordinates.lat]
-          } : null
-        };
+        }
 
-        let eventId;
-        if (mode === 'create') {
-          // Create new event
-          const { data: newEvent, error: createError } = await supabase
-            .from('events')
-            .insert(eventPayload)
-            .select()
-            .single();
-
-          if (createError) throw createError;
-          eventId = newEvent.id;
-        } else if (mode === 'edit' && initialData?.id) {
+        if (mode === 'edit' && initialData?.id) {
           // Update existing event
-          const updatePayload: UpdatePayload = {
-            ...eventPayload,
-            updated_at: new Date().toISOString()
-          };
-          delete updatePayload.user_id; // Don't update the user_id
-
           const { error: updateError } = await supabase
             .from('events')
-            .update(updatePayload)
-            .eq('id', initialData.id);
+            .update(eventPayload)
+            .eq('id', initialData.id)
 
-          if (updateError) throw updateError;
-          eventId = initialData.id;
-        }
-
-        // Redirect to the event details page
-        router.push(`/events/${eventId}`);
-        return;
-      }
-
-      const order: Section[] = ["overview", "cover", "datetime", "publish"];
-      const nextSection = editingSection
-        ? order.find(s => !completedSections.includes(s))
-        : order[order.indexOf(section) + 1];
-
-      // Update all states immediately in parallel
-      if (nextSection) {
-        // Update section states immediately
-        setCurrentSection(nextSection);
-        setEditingSection(null);
-        if (!completedSections.includes(section)) {
-          setCompletedSections(prev => [...prev, section]);
-        }
-
-        // Scroll immediately
-        const sectionElement = document.querySelector(`[data-section="${nextSection}"]`);
-        if (sectionElement) {
-          const offset = 32;
-          const elementPosition = sectionElement.getBoundingClientRect().top;
-          const offsetPosition = elementPosition + window.pageYOffset - offset;
-          window.scrollTo({
-            top: offsetPosition,
-            behavior: 'smooth'
-          });
-        }
-      }
-
-      // Handle form data updates after scroll
-      if (section === "cover") {
-        if (!data.coverImage || !data.coverImage.startsWith('blob:')) {
-          setFormData(prev => ({
-            ...prev,
-            ...data
-          }));
-        } else {
-          // Handle blob image upload
-          const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-          if (authError || !currentUser) {
-            throw new Error(authError?.message || 'User not authenticated');
+          if (updateError) {
+            throw new Error(`Failed to update event: ${updateError.message}`)
           }
 
-          const response = await fetch(data.coverImage);
-          if (!response.ok) throw new Error('Failed to fetch image data');
-          const blob = await response.blob();
-          
-          const timestamp = Date.now();
-          const randomString = Math.random().toString(36).substring(2, 15);
-          const fileExt = blob.type.split('/')[1] || 'jpg';
-          const fileName = `${timestamp}-${randomString}.${fileExt}`;
-          
-          const { data: uploadData, error: uploadError } = await supabase
-            .storage
-            .from('event-covers')
-            .upload(fileName, blob, {
-              contentType: blob.type
-            });
+          // Redirect to event page
+          router.push(`/e/${initialData.id}`)
+        } else {
+          // Create new event
+          const { data: newEvent, error: insertError } = await supabase
+            .from('events')
+            .insert([eventPayload])
+            .select()
+            .single()
 
-          if (uploadError) throw uploadError;
+          if (insertError || !newEvent) {
+            throw new Error(`Failed to create event: ${insertError?.message}`)
+          }
 
-          setFormData(prev => ({
-            ...prev,
-            ...data,
-            coverImage: fileName,
-            coverImageUrl: getCoverImageUrl(fileName)
-          }));
+          // Redirect to event page
+          router.push(`/e/${newEvent.id}`)
         }
-      } else {
-        // For non-cover sections, update form data immediately
-        setFormData(prev => ({
-          ...prev,
-          ...data
-        }));
+        return
       }
 
-    } catch (error: any) {
-      console.error('Section completion error:', {
-        section,
-        error,
-        message: error.message,
-        details: error?.details,
-        code: error?.code,
-        stack: error?.stack
-      });
-      throw error instanceof Error ? error : new Error(error?.message || 'An unknown error occurred');
+      // If we're in edit mode and a section was being edited, just mark it as no longer being edited
+      if (mode === 'edit' && editingSection) {
+        setEditingSection(null)
+        return
+      }
+
+      // For create mode, continue with normal section progression
+      const order: Section[] = ["overview", "cover", "datetime", "publish"]
+      const nextSection = order[order.indexOf(section) + 1]
+
+      if (nextSection) {
+        setCurrentSection(nextSection)
+        if (!completedSections.includes(section)) {
+          setCompletedSections(prev => [...prev, section])
+        }
+        scrollToSection(nextSection)
+      }
+    } catch (error) {
+      console.error('Error completing section:', error)
+      throw error // Re-throw the error so it can be handled by the Publish component
     }
   }
 
   const handleEdit = (section: Section) => {
-    console.log('handleEdit called with section:', section)
-    console.log('Current editing section:', editingSection)
-    console.log('Current active section:', currentSection)
-    
-    setCurrentSection(section)
     setEditingSection(section)
   }
 
@@ -347,10 +288,8 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
           defaultValues={formData}
           onClick={() => handleEdit("overview")}
           isEditing={editingSection === "overview"}
-          onEdit={() => {
-            console.log('Edit button clicked for overview')
-            handleEdit("overview")
-          }}
+          onEdit={() => handleEdit("overview")}
+          mode={mode}
         />
       </div>
       
@@ -364,6 +303,7 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
           onClick={() => handleEdit("cover")}
           isEditing={editingSection === "cover"}
           onEdit={() => handleEdit("cover")}
+          mode={mode}
         />
       </div>
 
@@ -382,6 +322,7 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
           onClick={() => handleEdit("datetime")}
           isEditing={editingSection === "datetime"}
           onEdit={() => handleEdit("datetime")}
+          mode={mode}
         />
       </div>
 
@@ -398,6 +339,7 @@ export function EventForm({ initialData, mode = 'create' }: EventFormProps) {
           onClick={() => handleEdit("publish")}
           isEditing={editingSection === "publish"}
           onEdit={() => handleEdit("publish")}
+          mode={mode}
         />
       </div>
     </div>

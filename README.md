@@ -1,38 +1,81 @@
-# Event Manager
+# GTHR - Event Management Platform
 
-A Next.js application for managing events and RSVPs.
+A modern event management platform built with Next.js that allows users to create, manage, and share events with ease.
+
+## Features
+
+- 🔐 **User Authentication**: Secure login and registration powered by Supabase
+- 📅 **Event Creation**: Create and manage events with rich details
+- 📍 **Location Mapping**: Interactive location selection with Mapbox integration
+- 📧 **Invitations**: Send email invites to guests with unique access codes
+- 📱 **Responsive Design**: Works seamlessly across desktop and mobile devices
+- 🌙 **Dark Mode**: Automatic theme switching based on system preferences
+
+## Tech Stack
+
+- **Framework**: Next.js 14 with App Router
+- **Language**: TypeScript
+- **Authentication**: Supabase Auth
+- **Database**: Supabase PostgreSQL
+- **Styling**: Tailwind CSS
+- **Maps**: Mapbox GL JS
+- **Email**: Resend
+- **State Management**: React Query
 
 ## Getting Started
 
 1. Clone the repository:
+```bash
+git clone https://github.com/your-username/gthr.git
+cd gthr
+```
 
+2. Install dependencies:
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Set up environment variables:
+Create a `.env.local` file with the following:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_token
+RESEND_API_KEY=your_resend_api_key
+```
+
+4. Run the development server:
 ```bash
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Supabase
+1. Create a new Supabase project
+2. Set up authentication providers
+3. Create necessary database tables for events and invitations
 
-## Learn More
+### Mapbox
+1. Create a Mapbox account
+2. Generate an access token with required permissions
+3. Enable necessary APIs (Geocoding, Maps)
 
-To learn more about Next.js, take a look at the following resources:
+### Resend
+1. Sign up for a Resend account
+2. Generate an API key
+3. Verify your domain for sending emails
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Contributing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

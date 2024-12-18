@@ -33,6 +33,7 @@ interface PublishProps {
   onClick: () => void
   isEditing?: boolean
   onEdit: () => void
+  mode?: 'create' | 'edit'
 }
 
 export function Publish({
@@ -43,7 +44,8 @@ export function Publish({
   previewData,
   onClick,
   isEditing,
-  onEdit
+  onEdit,
+  mode = 'create'
 }: PublishProps) {
   const { handleSubmit } = useForm<FormData>({
     resolver: zodResolver(schema)
@@ -51,6 +53,7 @@ export function Publish({
 
   const [isPublishing, setIsPublishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false)
 
   const handlePublish = async (data: FormData) => {
     setIsPublishing(true)
@@ -65,32 +68,26 @@ export function Publish({
     }
   }
 
+  const isEnabled = mode === 'edit' ? true : isActive
+
   return (
-    <section className={cn(
-      "rounded-lg border p-6",
-      isLocked && "opacity-50 pointer-events-none",
-      isCompleted && !isActive && "hover:border-blue-200 cursor-pointer",
-      isCompleted && "border-green-500",
-      (isActive || isEditing) && "border-blue-500 shadow-sm"
-    )}>
-      <div className="mb-10 flex items-center justify-between">
+    <section 
+      className={cn(
+        "rounded-lg border p-6",
+        isLocked && "opacity-50 pointer-events-none",
+        mode === 'edit' ? "border-green-500" : (
+          isCompleted ? "border-green-500" : 
+          isActive ? "border-blue-500 shadow-sm" : ""
+        )
+      )}
+    >
+      <div className="mb-10">
         <h2 className={cn(
           inter.className,
           "text-[32px] font-bold leading-[40px] text-[#090909]"
         )}>
           Publish and share
         </h2>
-        <div className={cn(
-          "w-6 h-6 rounded-full border-2 flex items-center justify-center",
-          isCompleted ? "border-green-500 bg-green-500" : "border-gray-300",
-          isActive && !isCompleted && "border-blue-500"
-        )}>
-          {isCompleted && (
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </div>
       </div>
 
       <form onSubmit={handleSubmit(handlePublish)} className="space-y-10">
@@ -166,37 +163,95 @@ export function Publish({
           </div>
         )}
 
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
-            disabled={isPublishing}
-          >
-            {isPublishing ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle 
-                    className="opacity-25" 
-                    cx="12" 
-                    cy="12" 
-                    r="10" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                  />
-                  <path 
-                    className="opacity-75" 
-                    fill="currentColor" 
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Publishing...
-              </>
-            ) : (
-              'Publish event'
-            )}
-          </button>
+        <div className="flex justify-end gap-2">
+          {mode === 'edit' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowDiscardDialog(true)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                disabled={isPublishing}
+              >
+                {isPublishing ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Publishing...
+                  </>
+                ) : (
+                  'Publish changes'
+                )}
+              </button>
+            </>
+          ) : (
+            <button
+              type="submit"
+              className={cn(
+                "bg-blue-500 text-white px-6 py-2 rounded-lg transition-colors flex items-center gap-2",
+                isEnabled ? "hover:bg-blue-600" : "opacity-50 cursor-not-allowed"
+              )}
+              disabled={!isEnabled || isPublishing}
+            >
+              {isPublishing ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Publishing...
+                </>
+              ) : (
+                'Publish event'
+              )}
+            </button>
+          )}
         </div>
       </form>
+
+      {showDiscardDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className={cn(
+              inter.className,
+              "text-2xl font-bold mb-4"
+            )}>
+              Discard changes?
+            </h2>
+            
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to discard your changes? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDiscardDialog(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Navigate back to event details page
+                  window.location.href = `/e/${previewData.id}`
+                }}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Discard changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 } 

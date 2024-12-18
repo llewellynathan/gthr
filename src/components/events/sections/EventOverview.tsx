@@ -24,6 +24,7 @@ interface EventOverviewProps {
   onClick: () => void
   isEditing?: boolean
   onEdit: () => void
+  mode?: 'create' | 'edit'
 }
 
 export function EventOverview({ 
@@ -34,14 +35,15 @@ export function EventOverview({
   defaultValues,
   onClick,
   isEditing,
-  onEdit
+  onEdit,
+  mode = 'create'
 }: EventOverviewProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues
   })
 
-  const isEnabled = isActive || isEditing
+  const isEnabled = mode === 'create' ? isActive : isEditing
 
   console.log('EventOverview render:', {
     isActive,
@@ -56,10 +58,19 @@ export function EventOverview({
       className={cn(
         "rounded-lg border p-6",
         isLocked && "opacity-50 pointer-events-none",
-        isCompleted && !isActive && "hover:border-blue-200 cursor-pointer",
-        isCompleted && "border-green-500",
-        (isActive || isEditing) && "border-blue-500 shadow-sm"
+        mode === 'edit' && !isEditing && "hover:border-blue-200 cursor-pointer",
+        mode === 'edit' ? (
+          isEditing ? "border-blue-500 shadow-sm" : "border-green-500"
+        ) : (
+          isCompleted ? "border-green-500" : 
+          isActive ? "border-blue-500 shadow-sm" : ""
+        )
       )}
+      onClick={() => {
+        if (mode === 'edit' && !isEditing) {
+          onClick()
+        }
+      }}
     >
       <div className="mb-10 flex items-center justify-between">
         <h2 className={cn(
@@ -151,8 +162,8 @@ export function EventOverview({
         </div>
 
         <div className="flex justify-end">
-          {isCompleted ? (
-            isActive || isEditing ? (
+          {mode === 'edit' ? (
+            isEditing ? (
               <button
                 type="submit"
                 className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
@@ -165,7 +176,6 @@ export function EventOverview({
                 className="text-blue-500 px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
                 onClick={(e) => {
                   e.preventDefault()
-                  console.log('Edit button clicked')
                   onEdit()
                 }}
               >
